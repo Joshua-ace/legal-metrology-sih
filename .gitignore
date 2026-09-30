@@ -25,5 +25,7 @@ Thumbs.db
 
 # Dev tools
 *.bat
+!build-apk.bat
+*.cmd
 *.ps1
 test_write.txt
