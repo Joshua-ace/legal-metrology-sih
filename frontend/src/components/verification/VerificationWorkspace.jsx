@@ -262,7 +262,7 @@ export const VerificationWorkspace = ({ verifierRole = 'LMO' }) => {
   }
 
   if (successResult) {
-    const isPass = successResult.verification?.result === 'PASS';
+    const isPass = successResult.verification_record?.result === 'PASS';
     return (
       <div className="max-w-xl mx-auto my-12 px-4">
         <div className="bg-white rounded border border-slate-300 shadow-xl p-6 sm:p-8 text-center space-y-4">
@@ -290,7 +290,7 @@ export const VerificationWorkspace = ({ verifierRole = 'LMO' }) => {
                   <span>Statutory Digital Verification Certificate Generated</span>
                 </div>
                 <div>Certificate ID: <strong className="font-mono text-sm">{successResult.certificate?.id}</strong></div>
-                <div>Valid Until: <strong>{successResult.certificate?.valid_until}</strong></div>
+                <div>Valid Until: <strong>{successResult.certificate?.valid_until ? new Date(successResult.certificate.valid_until).toLocaleDateString('en-IN') : 'N/A'}</strong></div>
                 <div className="pt-1 flex items-center space-x-2">
                   <Link
                     to={`/verify/${successResult.certificate?.id}`}

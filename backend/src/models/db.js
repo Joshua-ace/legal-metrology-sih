@@ -1685,49 +1685,180 @@ export const db = {
     const count = memoryDb.applications.length + 101;
     const appId = `LM-APP-${year}-${String(count).padStart(6, '0')}`;
 
-    // Look up instrument & category
+    // Look up instrument & category from in-memory (for fallback logic)
     const instrument = memoryDb.instruments.find(i => i.id === appData.instrument_id);
     const category = instrument ? memoryDb.categories.find(c => c.id === instrument.category_id) : null;
     const isGatcEligible = category ? Boolean(category.gatc_eligible) : true;
 
-    // Automated Direct Allotment Resolution
-    let verifierType = 'LMO';
-    let verifierId = 'c0000000-0000-0000-0000-000000000001'; // Default Senior LMO Inspector
-    let assignedOffice = null;
-
-    if (appData.preferred_office_id) {
-      const selectedOffice = memoryDb.offices.find(o => o.id === appData.preferred_office_id);
-      if (selectedOffice) {
-        assignedOffice = selectedOffice;
-        if (selectedOffice.type === 'GATC_LAB' && isGatcEligible) {
-          verifierType = 'GATC';
-          verifierId = selectedOffice.user_id || 'd0000000-0000-0000-0000-000000000001';
-        } else {
-          verifierType = 'LMO';
-          verifierId = selectedOffice.user_id || 'c0000000-0000-0000-0000-000000000001';
+    // Resolve verifier type & id based on office/cadre preference
+    const resolveVerifier = (offices, prefOfficeId, prefCadre, gatcEligible) => {
+      if (prefOfficeId) {
+        const selectedOffice = offices.find(o => o.id === prefOfficeId);
+        if (selectedOffice) {
+          if (selectedOffice.type === 'GATC_LAB' && gatcEligible) {
+            return { verifierType: 'GATC', verifierId: selectedOffice.user_id || 'd0000000-0000-0000-0000-000000000001', assignedOffice: selectedOffice };
+          }
+          return { verifierType: 'LMO', verifierId: selectedOffice.user_id || 'c0000000-0000-0000-0000-000000000001', assignedOffice: selectedOffice };
         }
       }
-    } else {
-      // Category-based direct automated routing without manual admin allotment:
-      // Heavy/specialized instruments (Weighbridges WB, Fuel Dispensers FPM) strictly route to LMO
-      if (!isGatcEligible) {
-        verifierType = 'LMO';
-        verifierId = 'c0000000-0000-0000-0000-000000000001';
-        assignedOffice = memoryDb.offices.find(o => o.type === 'LMO_OFFICE');
-      } else {
-        // Retail / Countertop commercial scales: route to GATC if requested, otherwise route to LMO
-        if (appData.preferred_cadre === 'GATC') {
-          verifierType = 'GATC';
-          verifierId = 'd0000000-0000-0000-0000-000000000001';
-          assignedOffice = memoryDb.offices.find(o => o.type === 'GATC_LAB');
-        } else {
-          verifierType = 'LMO';
-          verifierId = 'c0000000-0000-0000-0000-000000000001';
-          assignedOffice = memoryDb.offices.find(o => o.type === 'LMO_OFFICE');
+      if (!gatcEligible) {
+        return { verifierType: 'LMO', verifierId: 'c0000000-0000-0000-0000-000000000001', assignedOffice: offices.find(o => o.type === 'LMO_OFFICE') };
+      }
+      if (prefCadre === 'GATC') {
+        return { verifierType: 'GATC', verifierId: 'd0000000-0000-0000-0000-000000000001', assignedOffice: offices.find(o => o.type === 'GATC_LAB') };
+      }
+      return { verifierType: 'LMO', verifierId: 'c0000000-0000-0000-0000-000000000001', assignedOffice: offices.find(o => o.type === 'LMO_OFFICE') };
+    };
+
+    const { verifierType, verifierId, assignedOffice } = resolveVerifier(
+      memoryDb.offices, appData.preferred_office_id, appData.preferred_cadre, isGatcEligible
+    );
+
+    // Use admin UUID as system assignor (required for Supabase FK constraint on assignments.assigned_by)
+    const SYSTEM_ADMIN_UUID = 'a0000000-0000-0000-0000-000000000001';
+    const scheduleDate = appData.preferred_date || new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0];
+    const assignmentNotes = `Automated direct allotment to ${verifierType === 'LMO' ? 'Legal Metrology Inspector' : 'GATC Testing Lab'}.`;
+    const scheduleLocation = instrument?.location || (assignedOffice ? assignedOffice.address : 'Commercial Registered Premises');
+
+    // ── SUPABASE WRITE PATH ───────────────────────────────────────────────
+    if (isSupabaseConfigured && isUUID(appData.instrument_id)) {
+      try {
+        // Fetch instrument from Supabase to validate and get category
+        const { data: sbInstrument, error: instErr } = await supabase
+          .from('instruments')
+          .select('*, category:instrument_categories(id, code, name)')
+          .eq('id', appData.instrument_id)
+          .maybeSingle();
+
+        if (instErr) {
+          console.error('Supabase getInstrument in createApplication error:', instErr.message);
         }
+        if (!sbInstrument) throw new Error('Instrument not found in Supabase');
+
+        const sbCategory = Array.isArray(sbInstrument.category) ? sbInstrument.category[0] : sbInstrument.category;
+        const sbGatcEligible = sbCategory
+          ? (sbCategory.gatc_eligible !== undefined
+              ? Boolean(sbCategory.gatc_eligible)
+              : ['EWS', 'PWS', 'PCS'].includes(sbCategory.code))
+          : true;
+
+        const { verifierType: sbVType, verifierId: sbVId, assignedOffice: sbAssignedOffice } = resolveVerifier(
+          memoryDb.offices, appData.preferred_office_id, appData.preferred_cadre, sbGatcEligible
+        );
+
+        // Compute unique app ID based on max existing numeric suffix
+        const { data: existingApps } = await supabase
+          .from('applications')
+          .select('id');
+        let maxNum = 100;
+        if (existingApps && existingApps.length > 0) {
+          for (const a of existingApps) {
+            const parts = a.id ? a.id.split('-') : [];
+            const n = parseInt(parts[parts.length - 1], 10);
+            if (!isNaN(n) && n > maxNum) maxNum = n;
+          }
+        }
+        const supabaseAppId = `LM-APP-${year}-${String(maxNum + 1).padStart(6, '0')}`;
+
+        // 1. Insert application into Supabase
+        const { data: newSupabaseApp, error: appError } = await supabase
+          .from('applications')
+          .insert([{
+            id: supabaseAppId,
+            owner_id: appData.owner_id,
+            instrument_id: appData.instrument_id,
+            application_type: appData.application_type || 'NEW',
+            preferred_date: appData.preferred_date,
+            preferred_time: appData.preferred_time || '10:00 AM',
+            remarks: appData.remarks || '',
+            status: 'ASSIGNED',
+            documents: appData.documents || []
+          }])
+          .select()
+          .single();
+
+        if (appError) throw appError;
+
+        await this.updateInstrumentStatus(appData.instrument_id, 'PENDING');
+
+        // 2. Insert assignment into Supabase
+        const { error: assignError } = await supabase
+          .from('assignments')
+          .insert([{
+            application_id: supabaseAppId,
+            verifier_type: sbVType,
+            verifier_id: sbVId,
+            assigned_by: SYSTEM_ADMIN_UUID,
+            notes: `Automated direct allotment to ${sbVType === 'LMO' ? 'Legal Metrology Inspector' : 'GATC Testing Lab'}.`,
+            is_active: true
+          }]);
+
+        if (assignError) {
+          console.error('Supabase assignment insert error:', assignError.message);
+        }
+
+        // 3. Insert schedule into Supabase
+        const sbScheduleLocation = sbInstrument.location || (sbAssignedOffice ? sbAssignedOffice.address : (assignedOffice ? assignedOffice.address : 'Commercial Registered Premises'));
+        const { error: schedError } = await supabase
+          .from('schedules')
+          .insert([{
+            application_id: supabaseAppId,
+            scheduled_date: scheduleDate,
+            scheduled_time: appData.preferred_time || '10:30 AM',
+            location: sbScheduleLocation,
+            verifier_id: sbVId,
+            status: 'SCHEDULED'
+          }]);
+
+        if (schedError) {
+          console.error('Supabase schedule insert error:', schedError.message);
+        }
+
+        // Keep in-memory cache synchronized as well
+        memoryDb.applications.unshift({
+          id: supabaseAppId,
+          owner_id: appData.owner_id,
+          instrument_id: appData.instrument_id,
+          application_type: appData.application_type || 'NEW',
+          preferred_date: appData.preferred_date,
+          preferred_time: appData.preferred_time || '10:00 AM',
+          remarks: appData.remarks || '',
+          preferred_office_id: appData.preferred_office_id || sbAssignedOffice?.id || null,
+          status: 'ASSIGNED',
+          auto_allocated: true,
+          allocated_at: new Date().toISOString(),
+          documents: appData.documents || [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+        memoryDb.assignments.push({
+          id: `as-${Date.now()}`,
+          application_id: supabaseAppId,
+          verifier_type: sbVType,
+          verifier_id: sbVId,
+          assigned_by: SYSTEM_ADMIN_UUID,
+          assigned_date: new Date().toISOString(),
+          notes: assignmentNotes,
+          is_active: true
+        });
+        memoryDb.schedules.push({
+          id: `sch-${Date.now()}`,
+          application_id: supabaseAppId,
+          verifier_id: sbVId,
+          scheduled_date: scheduleDate,
+          scheduled_time: appData.preferred_time || '10:30 AM',
+          location: sbScheduleLocation,
+          status: 'SCHEDULED',
+          created_at: new Date().toISOString()
+        });
+
+        return this.getApplicationById(supabaseAppId);
+      } catch (err) {
+        console.error('Supabase createApplication failed, falling back to in-memory:', err.message);
       }
     }
 
+    // ── IN-MEMORY FALLBACK PATH ───────────────────────────────────────────
     const newApp = {
       id: appId,
       owner_id: appData.owner_id,
@@ -1737,7 +1868,7 @@ export const db = {
       preferred_time: appData.preferred_time || '10:00 AM',
       remarks: appData.remarks || '',
       preferred_office_id: appData.preferred_office_id || assignedOffice?.id || null,
-      status: 'ASSIGNED', // Direct allotment: no manual admin bottleneck!
+      status: 'ASSIGNED',
       auto_allocated: true,
       allocated_at: new Date().toISOString(),
       documents: appData.documents || [],
@@ -1748,28 +1879,25 @@ export const db = {
     memoryDb.applications.push(newApp);
     await this.updateInstrumentStatus(appData.instrument_id, 'PENDING');
 
-    // Create immediate active assignment record
     const newAssignment = {
       id: `as-${Date.now()}`,
       application_id: appId,
       verifier_type: verifierType,
       verifier_id: verifierId,
-      assigned_by: 'SYSTEM_AUTO_DIRECT_ALLOTMENT',
+      assigned_by: SYSTEM_ADMIN_UUID,
       assigned_date: new Date().toISOString(),
-      notes: `Automated direct allotment for category "${category?.name || 'Standard Scale'}" to ${verifierType === 'LMO' ? 'Legal Metrology Inspector' : 'GATC Testing Lab'}.`,
+      notes: assignmentNotes,
       is_active: true
     };
     memoryDb.assignments.push(newAssignment);
 
-    // Create schedule record
-    const scheduleDate = appData.preferred_date || new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0];
     const newSchedule = {
       id: `sch-${Date.now()}`,
       application_id: appId,
       verifier_id: verifierId,
       scheduled_date: scheduleDate,
       scheduled_time: appData.preferred_time || '10:30 AM',
-      location: instrument?.location || (assignedOffice ? assignedOffice.address : 'Commercial Registered Premises'),
+      location: scheduleLocation,
       status: 'SCHEDULED',
       created_at: new Date().toISOString()
     };
@@ -1810,11 +1938,12 @@ export const db = {
           .update({ is_active: false })
           .eq('application_id', appId);
 
+        const SYSTEM_ADMIN_UUID = 'a0000000-0000-0000-0000-000000000001';
         const payload = {
           application_id: appId,
           verifier_type: verifierType,
           verifier_id: verifierId,
-          assigned_by: assignedBy,
+          assigned_by: isUUID(assignedBy) ? assignedBy : SYSTEM_ADMIN_UUID,
           notes,
           is_active: true
         };
@@ -2727,13 +2856,59 @@ export const db = {
 
   // ─── Automated Operations: Smart Allocation of Unassigned Applications ──
   async autoAllocatePendingApplications() {
-    const unallocated = memoryDb.applications.filter(a => a.status === 'SUBMITTED' || a.status === 'UNDER_REVIEW');
+    const SYSTEM_ADMIN_UUID = 'a0000000-0000-0000-0000-000000000001';
+    let unallocated = [];
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('applications')
+          .select('id, instrument_id, preferred_date, preferred_time, remarks, status')
+          .in('status', ['SUBMITTED', 'UNDER_REVIEW']);
+        if (error) {
+          console.error('Supabase autoAllocate query error:', error.message);
+        } else {
+          unallocated = data || [];
+        }
+      } catch (err) {
+        console.error('Supabase autoAllocate query exception:', err.message);
+      }
+    } else {
+      unallocated = memoryDb.applications.filter(a => a.status === 'SUBMITTED' || a.status === 'UNDER_REVIEW');
+    }
+
     const allocatedResults = [];
 
     for (const app of unallocated) {
-      const instrument = memoryDb.instruments.find(i => i.id === app.instrument_id);
-      const category = instrument ? memoryDb.categories.find(c => c.id === instrument.category_id) : null;
-      const isGatcEligible = category ? Boolean(category.gatc_eligible) : true;
+      let isGatcEligible = true;
+      let categoryName = 'Scale';
+      let location = 'Commercial Registered Premises';
+
+      if (isSupabaseConfigured && isUUID(app.instrument_id)) {
+        try {
+          const { data: inst } = await supabase
+            .from('instruments')
+            .select('*, category:instrument_categories(id, code, name)')
+            .eq('id', app.instrument_id)
+            .maybeSingle();
+          if (inst) {
+            location = inst.location || location;
+            const cat = Array.isArray(inst.category) ? inst.category[0] : inst.category;
+            if (cat) {
+              categoryName = cat.name;
+              isGatcEligible = cat.gatc_eligible !== undefined ? Boolean(cat.gatc_eligible) : ['EWS', 'PWS', 'PCS'].includes(cat.code);
+            }
+          }
+        } catch (e) {
+          console.error('Error fetching instrument in autoAllocate:', e.message);
+        }
+      } else {
+        const instrument = memoryDb.instruments.find(i => i.id === app.instrument_id);
+        const category = instrument ? memoryDb.categories.find(c => c.id === instrument.category_id) : null;
+        isGatcEligible = category ? Boolean(category.gatc_eligible) : true;
+        categoryName = category?.name || 'Scale';
+        location = instrument?.location || location;
+      }
 
       let verifierType = 'LMO';
       let verifierId = 'c0000000-0000-0000-0000-000000000001';
@@ -2746,8 +2921,15 @@ export const db = {
         verifierId = 'd0000000-0000-0000-0000-000000000001';
       }
 
-      await this.assignApplication(app.id, verifierType, verifierId, 'AUTOMATED_DISPATCHER', `Auto-allocated based on category rules (${category?.name || 'Scale'}).`);
-      await this.scheduleVerification(app.id, app.preferred_date || new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0], app.preferred_time || '10:30 AM', instrument?.location || 'Registered Premises', verifierId, 'Automated scheduling');
+      await this.assignApplication(app.id, verifierType, verifierId, SYSTEM_ADMIN_UUID, `Auto-allocated based on category rules (${categoryName}).`);
+      await this.scheduleVerification(
+        app.id,
+        app.preferred_date || new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
+        app.preferred_time || '10:30 AM',
+        location,
+        verifierId,
+        'Automated scheduling'
+      );
 
       allocatedResults.push({
         application_id: app.id,
@@ -2762,7 +2944,6 @@ export const db = {
     };
   },
 
-  // ─── Automated Operations: Expiry Scan & Reminder Generator ─────────────
   async scanExpiries() {
     const now = new Date();
     const thirtyDaysFromNow = new Date();

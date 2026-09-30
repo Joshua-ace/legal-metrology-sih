@@ -64,7 +64,8 @@ export const applicationController = {
         preferred_time,
         remarks,
         documents,
-        preferred_office_id
+        preferred_office_id,
+        preferred_cadre
       } = req.body;
 
       if (!instrument_id || !preferred_date) {
@@ -91,6 +92,7 @@ export const applicationController = {
         preferred_time: preferred_time || '10:00 AM',
         remarks,
         preferred_office_id,
+        preferred_cadre,
         documents: documents || []
       });
 
