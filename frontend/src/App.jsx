@@ -8,6 +8,7 @@ import { HomePage } from './pages/public/HomePage';
 import { AboutPage } from './pages/public/AboutPage';
 import { ServicesPage } from './pages/public/ServicesPage';
 import { PublicVerifyPage } from './pages/public/PublicVerifyPage';
+import { DownloadPage } from './pages/public/DownloadPage';
 
 // Auth Pages
 import { LoginPage } from './pages/auth/LoginPage';
@@ -49,6 +50,7 @@ export function App() {
         <Route path="services" element={<ServicesPage />} />
         <Route path="verify" element={<PublicVerifyPage />} />
         <Route path="verify/:certificateId" element={<PublicVerifyPage />} />
+        <Route path="download" element={<DownloadPage />} />
 
         {/* Authentication Routes */}
         <Route path="login" element={<LoginPage />} />

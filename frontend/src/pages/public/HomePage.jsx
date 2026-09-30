@@ -11,7 +11,9 @@ import {
   ArrowRight,
   AlertCircle,
   Clock,
-  Award
+  Award,
+  Smartphone,
+  Download
 } from 'lucide-react';
 
 export const HomePage = () => {
@@ -276,6 +278,93 @@ export const HomePage = () => {
               </ul>
               <Link to="/login" className="text-xs font-semibold text-gov-blue hover:underline block pt-2">
                 Access Admin Portal →
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Mobile App Download Banner ──────────────────────────── */}
+      <div className="bg-gradient-to-r from-[#0A2540] via-gov-navy to-[#0e3460] py-10 border-t-4 border-amber-500">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col lg:flex-row items-center gap-8">
+            {/* Left: Phone image */}
+            <div className="flex-shrink-0 relative">
+              <div className="absolute -inset-3 bg-amber-400/10 rounded-3xl blur-xl" />
+              <img
+                src="/mobile-app-mockup.jpg"
+                alt="Legal Metrology Mobile App"
+                className="relative w-36 sm:w-44 rounded-2xl shadow-2xl border border-white/10 object-cover"
+              />
+            </div>
+
+            {/* Center: Text */}
+            <div className="flex-1 text-center lg:text-left space-y-3">
+              <div className="inline-flex items-center space-x-2 bg-amber-500/20 border border-amber-400/30 text-amber-300 text-[11px] px-3 py-1 rounded-full">
+                <Smartphone size={12} />
+                <span className="font-semibold tracking-wide">Official Mobile Application — Now Available</span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold font-serif text-white">
+                Download the Legal Metrology App
+              </h2>
+              <p className="text-slate-300 text-xs leading-relaxed max-w-xl">
+                Scan instrument QR codes instantly, track your applications, receive certificate expiry alerts,
+                and carry your digital certificates on your phone. Free for Android &amp; iOS.
+              </p>
+              {/* Mini feature pills */}
+              <div className="flex flex-wrap gap-2 justify-center lg:justify-start">
+                {['QR Scanner', 'Expiry Alerts', 'Offline Mode', 'PDF Certificates', 'Field Inspection'].map((f) => (
+                  <span key={f} className="bg-white/10 text-slate-200 text-[10px] px-2.5 py-1 rounded-full border border-white/20">
+                    {f}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Right: Buttons */}
+            <div className="flex-shrink-0 flex flex-col sm:flex-row lg:flex-col gap-3">
+              <a
+                href="https://play.google.com/store"
+                target="_blank"
+                rel="noreferrer"
+                id="home-google-play"
+                className="flex items-center space-x-3 bg-white text-slate-900 px-5 py-3 rounded-xl shadow-lg hover:bg-amber-50 hover:scale-105 transition-all font-semibold text-sm"
+              >
+                <svg viewBox="0 0 24 24" className="w-6 h-6 flex-shrink-0" fill="none">
+                  <path d="M3.18 1.44 13.59 12 3.18 22.56A2 2 0 0 1 2 21V3a2 2 0 0 1 1.18-1.56z" fill="#EA4335" />
+                  <path d="m13.59 12 3.09 3.09-11.5 6.63A2 2 0 0 1 3.18 22.56L13.59 12z" fill="#FBBC05" />
+                  <path d="M20.32 10.27A2 2 0 0 1 22 12a2 2 0 0 1-1.68 1.73l-2.65 1.36L13.59 12l4.08-4.09 2.65 2.36z" fill="#4285F4" />
+                  <path d="M5.18 1.44 16.68 7.91 13.59 12 3.18 1.44A2 2 0 0 1 5.18 1.44z" fill="#34A853" />
+                </svg>
+                <div className="text-left">
+                  <div className="text-[10px] text-slate-500 font-normal leading-none">Get it on</div>
+                  <div className="font-bold leading-tight">Google Play</div>
+                </div>
+              </a>
+
+              <a
+                href="https://apps.apple.com"
+                target="_blank"
+                rel="noreferrer"
+                id="home-app-store"
+                className="flex items-center space-x-3 bg-white text-slate-900 px-5 py-3 rounded-xl shadow-lg hover:bg-amber-50 hover:scale-105 transition-all font-semibold text-sm"
+              >
+                <svg viewBox="0 0 24 24" className="w-6 h-6 flex-shrink-0" fill="#555">
+                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+                </svg>
+                <div className="text-left">
+                  <div className="text-[10px] text-slate-500 font-normal leading-none">Download on the</div>
+                  <div className="font-bold leading-tight">App Store</div>
+                </div>
+              </a>
+
+              <Link
+                to="/download"
+                id="home-view-all-downloads"
+                className="flex items-center justify-center space-x-2 border border-amber-400/50 text-amber-300 hover:text-white hover:border-amber-400 px-5 py-3 rounded-xl text-sm font-semibold transition"
+              >
+                <Download size={15} />
+                <span>More Download Options</span>
               </Link>
             </div>
           </div>

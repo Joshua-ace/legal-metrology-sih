@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldCheck, Scale, ExternalLink, HelpCircle, FileText, Phone, Mail, MapPin } from 'lucide-react';
+import { ShieldCheck, Scale, ExternalLink, HelpCircle, FileText, Phone, Mail, MapPin, Smartphone } from 'lucide-react';
 
 export const GovFooter = () => {
   return (
@@ -102,6 +102,12 @@ export const GovFooter = () => {
               <li>
                 <Link to="/services" className="hover:text-amber-400">
                   GATC Accreditation Standards
+                </Link>
+              </li>
+              <li>
+                <Link to="/download" className="hover:text-amber-400 flex items-center space-x-1.5 font-medium text-amber-400/80">
+                  <Smartphone size={12} className="text-amber-400" />
+                  <span>Download Mobile App</span>
                 </Link>
               </li>
             </ul>

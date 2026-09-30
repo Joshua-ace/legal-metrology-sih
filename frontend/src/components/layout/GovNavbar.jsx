@@ -12,7 +12,8 @@ import {
   Building2,
   FileCheck2,
   Lock,
-  ChevronDown
+  ChevronDown,
+  Smartphone
 } from 'lucide-react';
 
 export const GovNavbar = () => {
@@ -101,6 +102,18 @@ export const GovNavbar = () => {
             >
               <ShieldCheck size={15} className="text-emerald-400" />
               <span>Certificate Verification</span>
+            </Link>
+
+            <Link
+              to="/download"
+              className={`px-3 py-1.5 rounded text-xs sm:text-sm font-medium flex items-center space-x-1 transition ${
+                isActive('/download')
+                  ? 'bg-amber-600 text-white font-semibold'
+                  : 'bg-amber-600/20 hover:bg-amber-600 text-amber-300 hover:text-white border border-amber-500/40'
+              }`}
+            >
+              <Smartphone size={14} />
+              <span>Download App</span>
             </Link>
 
             {/* Quick Access to Active Role Dashboard */}
