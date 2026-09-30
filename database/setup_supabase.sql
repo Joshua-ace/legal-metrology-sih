@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS instrument_categories (
     verification_cycle_months INT NOT NULL DEFAULT 12,
     accuracy_class VARCHAR(20) NOT NULL DEFAULT 'Class III',
     standard_fee NUMERIC(10, 2) NOT NULL DEFAULT 500.00,
+    gatc_eligible BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -291,14 +292,19 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- =====================================================================
 
 -- 1. INSTRUMENT CATEGORIES
-INSERT INTO instrument_categories (id, code, name, description, verification_cycle_months, accuracy_class, standard_fee)
+-- Add gatc_eligible column if it doesn't exist yet (safe migration)
+DO $$ BEGIN
+  ALTER TABLE instrument_categories ADD COLUMN IF NOT EXISTS gatc_eligible BOOLEAN NOT NULL DEFAULT TRUE;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
+
+INSERT INTO instrument_categories (id, code, name, description, verification_cycle_months, accuracy_class, standard_fee, gatc_eligible)
 VALUES 
-    ('11111111-1111-1111-1111-111111111001', 'EWS', 'Electronic Weighing Scale (Countertop)', 'Non-automatic weighing instruments for commercial retail transactions up to 30 kg', 12, 'Class III', 450.00),
-    ('11111111-1111-1111-1111-111111111002', 'PWS', 'Platform Weighing Scale', 'Heavy duty platform scales for warehouses and wholesale trade up to 500 kg', 12, 'Class III', 850.00),
-    ('11111111-1111-1111-1111-111111111003', 'PCS', 'Price Computing Scale', 'Electronic retail scales with automatic price computation and thermal print receipt', 12, 'Class III', 600.00),
-    ('11111111-1111-1111-1111-111111111004', 'WB', 'Electronic Weighbridge (Pitless / Pit)', 'Heavy capacity vehicle weighing bridge up to 100 tonnes', 24, 'Class IV', 4500.00),
-    ('11111111-1111-1111-1111-111111111005', 'FPM', 'Fuel Dispensing Unit (Petrol/Diesel)', 'Measuring pumps for petroleum dispensing with calibrated meter unit', 12, 'Class 0.5', 1200.00)
-ON CONFLICT (code) DO NOTHING;
+    ('11111111-1111-1111-1111-111111111001', 'EWS', 'Electronic Weighing Scale (Countertop)', 'Non-automatic weighing instruments for commercial retail transactions up to 30 kg', 12, 'Class III', 450.00, TRUE),
+    ('11111111-1111-1111-1111-111111111002', 'PWS', 'Platform Weighing Scale', 'Heavy duty platform scales for warehouses and wholesale trade up to 500 kg', 12, 'Class III', 850.00, TRUE),
+    ('11111111-1111-1111-1111-111111111003', 'PCS', 'Price Computing Scale', 'Electronic retail scales with automatic price computation and thermal print receipt', 12, 'Class III', 600.00, TRUE),
+    ('11111111-1111-1111-1111-111111111004', 'WB', 'Electronic Weighbridge (Pitless / Pit)', 'Heavy capacity vehicle weighing bridge up to 100 tonnes', 24, 'Class IV', 4500.00, FALSE),
+    ('11111111-1111-1111-1111-111111111005', 'FPM', 'Fuel Dispensing Unit (Petrol/Diesel)', 'Measuring pumps for petroleum dispensing with calibrated meter unit', 12, 'Class 0.5', 1200.00, FALSE)
+ON CONFLICT (code) DO UPDATE SET gatc_eligible = EXCLUDED.gatc_eligible;
 
 -- 2. USERS (password = DemoPassword@2026)
 INSERT INTO users (id, email, password_hash, role, status, full_name, phone)

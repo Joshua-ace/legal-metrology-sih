@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS instrument_categories (
     verification_cycle_months INT NOT NULL DEFAULT 12,
     accuracy_class VARCHAR(20) NOT NULL DEFAULT 'Class III',
     standard_fee NUMERIC(10, 2) NOT NULL DEFAULT 500.00,
+    gatc_eligible BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
